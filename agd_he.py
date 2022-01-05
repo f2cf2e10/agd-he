@@ -101,7 +101,7 @@ def sigma_permutation(d, nmax, val=1.0):
     n = d*d
     Usigma = np.zeros(n*n).reshape(n, n)
     for i, j in itertools.product(range(d), range(d)):
-        Usigma[d*i+j, d*i+((i+j) % d)] = val 
+        Usigma[d*i+j, d*i+((i+j) % d)] = val
     output = np.kron(np.eye(2), Usigma)
     return output[0:nmax, 0:nmax]
 
@@ -119,7 +119,7 @@ def phi_permutation_k(k, d, nmax, val=1.0):
     n = d*d
     Vk = np.zeros(n*n).reshape(n, n)
     for i, j in itertools.product(range(d), range(d)):
-        Vk[d*i+j, d*i+((j+k) % d)] = val 
+        Vk[d*i+j, d*i+((j+k) % d)] = val
     return Vk
 
 
@@ -127,7 +127,7 @@ def psi_permutation_k(k, d, nmax, val=1.0):
     n = d*d
     Wk = np.zeros(n*n).reshape(n, n)
     for i, j in itertools.product(range(d), range(d)):
-        Wk[d*i+j, d*((i+k) % d)+j] = val 
+        Wk[d*i+j, d*((i+k) % d)+j] = val
     return Wk
 
 
@@ -135,7 +135,7 @@ def cA_x_cB(A: Ciphertext, B: Ciphertext, evaluator: Evaluator, relin_keys: Reli
     """
     Element-wise product of cipherthextA and ciphertextB
     """
-    auto_rescale_and_mod_switch([A,B], evaluator)
+    auto_rescale_and_mod_switch([A, B], evaluator)
     C = Ciphertext()
     evaluator.multiply(A, B, C)
     evaluator.relinearize_inplace(C, relin_keys)
@@ -144,7 +144,7 @@ def cA_x_cB(A: Ciphertext, B: Ciphertext, evaluator: Evaluator, relin_keys: Reli
 
 
 def cA_dot_cB(ct_A: Ciphertext, ct_B: Ciphertext, evaluator: Evaluator, encoder: CKKSEncoder,
-                gal_keys: GaloisKeys, relin_keys: RelinKeys, d: int, scale:float=1.0) -> Ciphertext:
+              gal_keys: GaloisKeys, relin_keys: RelinKeys, d: int, scale: float = 1.0) -> Ciphertext:
     """
     Matrix product of CiphertextA and CiphertextB
     Inspired by "Secure Outsourced Matrix Computationand Application to Neural Networks?"
@@ -153,7 +153,7 @@ def cA_dot_cB(ct_A: Ciphertext, ct_B: Ciphertext, evaluator: Evaluator, encoder:
     nmax = encoder.slot_count()
     n = d*d
     if n > nmax/2:
-       raise("Matrix dimenson is higher than the one suported by the encoder")
+        raise("Matrix dimenson is higher than the one suported by the encoder")
     Usigma = sigma_permutation(d, nmax, np.sign(scale) * np.abs(scale)**0.5)
     Utau = tau_permutation(d, nmax, np.abs(scale)**0.5)
     ct_A0 = lin_trans(Usigma, ct_A, evaluator, encoder, gal_keys, relin_keys)
@@ -200,20 +200,23 @@ def decrypt_array(cipher: Ciphertext, decryptor: Decryptor, encoder: CKKSEncoder
     matrix = np.array(vec[0:(M*N)]).reshape(M, N)
     return matrix
 
-def rescale_and_mod_switch(x:Ciphertext, new_scale:float, new_parms:List[int], evaluator:Evaluator):
+
+def rescale_and_mod_switch(x: Ciphertext, new_scale: float, new_parms: List[int], evaluator: Evaluator):
     x.set_scale(new_scale)
     evaluator.mod_switch_to_inplace(x, new_parms)
 
-def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator:Evaluator):
+
+def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator: Evaluator):
     scales = [i.scale() for i in x]
     parms = [i.parms_id() for i in x]
     new_scale = np.max(scales)
     i_scale = np.argmax(scales)
     new_parms = parms[i_scale]
     for xi in x:
-        rescale_and_mod_switch(xi, new_scale, new_parms, evaluator) 
+        rescale_and_mod_switch(xi, new_scale, new_parms, evaluator)
 
-def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y:Ciphertext, evaluator:Evaluator) -> Ciphertext:
+
+def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y: Ciphertext, evaluator: Evaluator) -> Ciphertext:
     # Although the scales of all three terms are approximately 2^40, their exact v
     # alues are different, hence they cannot be added together.
     # There are many ways to fix this problem. Since the prime numbers are really close
@@ -233,7 +236,8 @@ def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y:Ciphertext, evaluator:Ev
     evaluator.add(x, y, z)
     return z
 
-def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y:float, evaluator:Evaluator, encoder:CKKSEncoder, relin_keys:RelinKeys):
+
+def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: Evaluator, encoder: CKKSEncoder, relin_keys: RelinKeys):
     y_ = Plaintext()
     encoder.encode(y, x.scale(), y_)
     evaluator.mod_switch_to_inplace(y_, x.parms_id())
@@ -243,9 +247,10 @@ def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y:float, evaluator:Ev
     evaluator.rescale_to_next_inplace(z)
     return z
 
+
 def acg_qp(Q: np.ndarray, p: np.ndarray, beta: float, alpha: float, n: int, x0: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    f = lambda x: x.T.dot(Q).dot(x) + p.dot(x)
-    df = lambda x: Q.dot(x) + p
+    def f(x): return x.T.dot(Q).dot(x) + p.dot(x)
+    def df(x): return Q.dot(x) + p
     x = x0
     y = x0
     kappa = beta/alpha
@@ -266,8 +271,8 @@ def he_acg_qp(Q: Ciphertext, p: Ciphertext, beta: float, kappa: float, n: int, c
     gamma = (kappa**0.5-1)/(kappa**0.5+1)
     for t in range(n):
         d_ = d
-        #d = evaluator.add_inplace(c, - 1/beta * df(c)
-        c_=c
-        c=(1 + gamma) * d - gamma * d_
-    tol=np.abs(f(c) - f(c_))
+        # d = evaluator.add_inplace(c, - 1/beta * df(c)
+        c_ = c
+        c = (1 + gamma) * d - gamma * d_
+    tol = np.abs(f(c) - f(c_))
     return c, tol
