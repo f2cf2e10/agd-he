@@ -98,18 +98,6 @@ for t in range(T):
     MMultQ_enc_x_enc_ = matrix_multiplication(Q_enc, x_enc_, evaluator,
                               ckks_encoder, gal_keys, relin_keys, d, -1./beta)
 
-    # TEST
-    MMultQ_enc_x_enc_2 = MMult2(
-        Q_enc, x_enc_, evaluator, ckks_encoder, gal_keys, relin_keys, d, -1./beta)
-    print("Modulus chain index for MMult1: {}".format(
-        context.get_context_data(MMultQ_enc_x_enc_.parms_id()).chain_index()))
-    print("Modulus chain index for MMult2: {}".format(
-        context.get_context_data(MMultQ_enc_x_enc_2.parms_id()).chain_index()))
-    MMult1_dec = decrypt_array(
-        MMultQ_enc_x_enc_, decryptor, ckks_encoder, d, d)
-    MMult2 = decrypt_array(MMultQ_enc_x_enc_2, decryptor, ckks_encoder, d, d)
-    ##########
-
     p_enc_beta.set_scale(MMultQ_enc_x_enc_.scale())
     evaluator.mod_switch_to_inplace(p_enc_beta, MMultQ_enc_x_enc_.parms_id())
     evaluator.add_inplace(MMultQ_enc_x_enc_, p_enc_beta)
