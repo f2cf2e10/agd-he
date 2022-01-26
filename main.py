@@ -1,12 +1,14 @@
 # Inspired by "Secure Outsourced Matrix Computationand Application to Neural Networks?"
 # Link: https://eprint.iacr.org/2018/1041.pdf
-from agd.seal import EncryptionParameters, scheme_type, \
-    SEALContext, print_parameters, KeyGenerator, \
-    Encryptor, CoeffModulus, Evaluator, Decryptor, \
-    CKKSEncoder, IntVector, Plaintext, Ciphertext, GaloisKeys, \
-    RelinKeys
+from agd.seal3_7_2.seal import EncryptionParameters, scheme_type, \
+    SEALContext, print_parameters, KeyGenerator, Encryptor, CoeffModulus, \
+    Evaluator, Decryptor, CKKSEncoder, IntVector, Plaintext, Ciphertext, \
+    GaloisKeys, RelinKeys, PublicKey, sec_level_type
 import numpy as np
-from agd.matrix.jlks import matrix_multiplication 
+import pandas as pd
+import matplotlib.pyplot as plt
+from agd.matrix.jlks import matrix_multiplication as jlks
+from agd.matrix.ours import matrix_multiplication as ours
 from agd.matrix.utils import encrypt_array, squarify, decrypt_array, \
     rescale_and_mod_switch, rescale_and_mod_switch_y_and_add_x, \
     rescale_and_mod_switch_y_and_multiply_x
@@ -18,9 +20,16 @@ p = np.array([[1.0], [1.0]])
 # Matrix dimension
 d, _ = Q.shape
 
-x0 = np.array([np.random.randn(d)]).T
+
+def f(x): return x.T.dot(Q).dot(x) + p.T.dot(x)
+def df(x): return Q.dot(x) + p
+
+
 # Steps
-T = 14
+bits = [27, 54, 109, 218, 438, 881]
+poly_degree = [2**i for i in range(10, 16)]
+T = 7
+R = 3
 
 # Pre-calculations
 eigenvals = np.linalg.eigvals(Q)
@@ -29,99 +38,122 @@ alpha = np.min(eigenvals)
 kappa = beta/alpha
 gamma = (kappa**0.5-1)/(kappa**0.5+1)
 
-# HE parameters
-scale = 2.0**40
+repeat = 100
+step = pd.DataFrame(np.zeros((repeat, T)))
+step_he = pd.DataFrame(np.zeros((repeat, T)))
 
-parms = EncryptionParameters(scheme_type.CKKS)
+for i in range(100):
+    x0 = np.array([np.random.randn(d)]).T
+    # HE parameters
+    scale = 2.0**40
 
-poly_modulus_degree = 2**(T+1)
-parms.set_poly_modulus_degree(poly_modulus_degree)
-parms.set_coeff_modulus(CoeffModulus.Create(
-    poly_modulus_degree, IntVector([60] + [40]*T + [60])))
+    parms = EncryptionParameters(scheme_type.ckks)
 
-context = SEALContext.Create(parms)
-print_parameters(context)
+    #poly_modulus_degree = poly_degree[bits.index(
+    #    next((x for x in bits if x > (120+T*R*40)), None))]
+    poly_modulus_degree = 65536
+    parms.set_poly_modulus_degree(poly_modulus_degree)
+    parms.set_coeff_modulus(CoeffModulus.Create(
+        poly_modulus_degree, IntVector([60] + [40]*T*R + [60])))
 
-keygen = KeyGenerator(context)
-public_key = keygen.public_key()
-secret_key = keygen.secret_key()
-relin_keys = keygen.relin_keys()
-gal_keys = keygen.galois_keys()
-encryptor = Encryptor(context, public_key)
-evaluator = Evaluator(context)
-decryptor = Decryptor(context, secret_key)
+    #NOTE: the none means to ommit securiy checks, we are doing it here to push as much as 
+    #possible the poly_modulud_degree
+    context = SEALContext(parms, True, sec_level_type.none)
+    print_parameters(context)
 
-ckks_encoder = CKKSEncoder(context)
+    keygen = KeyGenerator(context)
+    secret_key = keygen.secret_key()
+    
+    public_key = PublicKey()
+    keygen.create_public_key(public_key)
+   
+    relin_keys = RelinKeys()
+    keygen.create_relin_keys(relin_keys)
 
-# Problem Inputs HE AGD
-Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
-p_enc = encrypt_array(p, encryptor, ckks_encoder, scale)
-x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-beta_ = Plaintext()
-ckks_encoder.encode(-1./beta, p_enc.scale(), beta_)
-p_enc_beta = Ciphertext()
-evaluator.multiply_plain(p_enc, beta_, p_enc_beta)
-evaluator.relinearize_inplace(p_enc_beta, relin_keys)
-evaluator.rescale_to_next_inplace(p_enc_beta)
+    gal_keys = GaloisKeys() 
+    keygen.create_galois_keys(gal_keys)
 
+    encryptor = Encryptor(context, public_key)
+    evaluator = Evaluator(context)
+    decryptor = Decryptor(context, secret_key)
+    ckks_encoder = CKKSEncoder(context)
 
-def f(x): return x.T.dot(Q).dot(x)
+    # Problem Inputs HE AGD
+    Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
+    p_enc = encrypt_array(p, encryptor, ckks_encoder, scale)
+    x0_enc = encrypt_array(squarify(x0, 0.0, d),
+                           encryptor, ckks_encoder, scale)
+    beta_ = Plaintext()
+    ckks_encoder.encode(-1./beta, p_enc.scale(), beta_)
+    p_enc_beta = Ciphertext()
+    evaluator.multiply_plain(p_enc, beta_, p_enc_beta)
+    evaluator.relinearize_inplace(p_enc_beta, relin_keys)
+    evaluator.rescale_to_next_inplace(p_enc_beta)
 
+    # Initialization AGD
+    y_ = x0
+    x_ = x0
 
-def df(x): return Q.dot(x) + p
+    # Initialization HE
+    y_enc_ = encrypt_array(squarify(x0, 0.0, d),
+                           encryptor, ckks_encoder, scale)
+    x_enc_ = encrypt_array(squarify(x0, 0.0, d),
+                           encryptor, ckks_encoder, scale)
 
+    for t in range(T):
+        # Plain
+        y = x_ - 1/beta * df(x_)
+        x = (1 + gamma) * y - gamma * y_
+        x_ = x
+        y_ = y
 
-def df_enc(c: Ciphertext, q_matrix: Ciphertext, p_vector: Ciphertext, evaluator: Evaluator, encoder: CKKSEncoder, gal_keys: GaloisKeys, relin_keys: RelinKeys, n: int):
-    q_matrix_dot_c = matrix_multiplication(q_matrix, c, evaluator, encoder, gal_keys, relin_keys, n)
-    return rescale_and_mod_switch_y_and_add_x(q_matrix_dot_c, p_vector, evaluator)
+        # Enc
+        print("Modulus chain index for y_enc: {}".format(
+            context.get_context_data(y_enc_.parms_id()).chain_index()))
 
+        MMultQ_enc_x_enc_ = ours(Q_enc, x_enc_, evaluator,
+                                 ckks_encoder, gal_keys, relin_keys, d, -1./beta)
 
-# Initialization AGD
-y_ = x0
-x_ = x0
+        p_enc_beta.set_scale(MMultQ_enc_x_enc_.scale())
+        evaluator.mod_switch_to_inplace(
+            p_enc_beta, MMultQ_enc_x_enc_.parms_id())
+        evaluator.add_inplace(MMultQ_enc_x_enc_, p_enc_beta)
+        y_enc = rescale_and_mod_switch_y_and_add_x(
+            MMultQ_enc_x_enc_, x_enc_, evaluator)
 
-# Initialization HE
-y_enc_ = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-x_enc_ = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
+        print("Modulus chain index for y_enc: {}".format(
+            context.get_context_data(y_enc.parms_id()).chain_index()))
 
-for t in range(T):
-    # Plain
-    y = x_ - 1/beta * df(x_)
-    x = (1 + gamma) * y - gamma * y_
-    x_ = x
-    y_ = y
+        gamma_1_y_enc = rescale_and_mod_switch_y_and_multiply_x(
+            y_enc, 1+gamma, evaluator, ckks_encoder, relin_keys)
+        gamma_y_enc_ = rescale_and_mod_switch_y_and_multiply_x(
+            y_enc_, -gamma, evaluator, ckks_encoder, relin_keys)
 
-    # Enc
-    print("Modulus chain index for y_enc: {}".format(
-        context.get_context_data(y_enc_.parms_id()).chain_index()))
+        print("Modulus chain index for y_enc: {}".format(
+            context.get_context_data(y_enc.parms_id()).chain_index()))
+        x_enc = rescale_and_mod_switch_y_and_add_x(
+            gamma_1_y_enc, gamma_y_enc_, evaluator)
+        y_enc_ = y_enc
+        x_enc_ = x_enc
 
-    MMultQ_enc_x_enc_ = matrix_multiplication(Q_enc, x_enc_, evaluator,
-                              ckks_encoder, gal_keys, relin_keys, d, -1./beta)
+        # Comparison
+        x_dec = decrypt_array(x_enc, decryptor, ckks_encoder, d, d)
 
-    p_enc_beta.set_scale(MMultQ_enc_x_enc_.scale())
-    evaluator.mod_switch_to_inplace(p_enc_beta, MMultQ_enc_x_enc_.parms_id())
-    evaluator.add_inplace(MMultQ_enc_x_enc_, p_enc_beta)
-    y_enc = rescale_and_mod_switch_y_and_add_x(
-        MMultQ_enc_x_enc_, x_enc_, evaluator)
+        step_he[t][i] = f(x_dec[:, 0])
+        step[t][i] = f(x[:, 0])
+        print("==================================================================================")
 
-    print("Modulus chain index for y_enc: {}".format(
-        context.get_context_data(y_enc.parms_id()).chain_index()))
+plt.figure()
+step_he.boxplot()
+plt.xlabel('Steps')
+plt.ylabel('f(x_he)')
+plt.show()
 
-    gamma_1_y_enc = rescale_and_mod_switch_y_and_multiply_x(
-        y_enc, 1+gamma, evaluator, ckks_encoder, relin_keys)
-    gamma_y_enc_ = rescale_and_mod_switch_y_and_multiply_x(
-        y_enc_, -gamma, evaluator, ckks_encoder, relin_keys)
+plt.figure()
+step.boxplot()
+plt.xlabel('Steps')
+plt.ylabel('f(x)')
+plt.show()
 
-    print("Modulus chain index for y_enc: {}".format(
-        context.get_context_data(y_enc.parms_id()).chain_index()))
-    x_enc = rescale_and_mod_switch_y_and_add_x(
-        gamma_1_y_enc, gamma_y_enc_, evaluator)
-    y_enc_ = y_enc
-    x_enc_ = x_enc
-
-    # Comparison
-    y_dec = decrypt_array(y_enc, decryptor, ckks_encoder, d, d)
-    print(
-        "Abs difference in x encrypted/decrypted and plain: {}".format(np.abs(y[0][0] - y_dec[0][0])))
-
-    print("==================================================================================")
+step_he.to_csv("./data/step_he_gaussian_on.csv")
+step.to_csv("./data/step_gaussian_on.csv")

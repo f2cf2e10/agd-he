@@ -1,5 +1,5 @@
 import numpy as np
-from agd.seal import Encryptor, Evaluator, Decryptor, \
+from agd.seal3_7_2.seal import Encryptor, Evaluator, Decryptor, \
     CKKSEncoder, Evaluator, Ciphertext, CKKSEncoder, \
     CiphertextVector, GaloisKeys, RelinKeys, DoubleVector, \
     Plaintext
@@ -23,7 +23,8 @@ def diag_repr(u_matrix: np.ndarray, i: int) -> np.ndarray:
     if (N != M):
         raise Exception("diag_repr only works for square matrices")
     else:
-        result = np.concatenate([np.diag(u_matrix, i), np.diag(u_matrix, -N+i)])
+        result = np.concatenate(
+            [np.diag(u_matrix, i), np.diag(u_matrix, -N+i)])
         if len(result) != N:
             raise Exception("diag_repr index is out of bounds")
         return result
@@ -63,15 +64,14 @@ evaluator.multiply_plain(ct
     Given a matrix U \in Rn×n and an encryptionct of the vector m, the following algorithm
     describes how to compute a ciphertext of the desired vector U \dot m.
 
-    ############# Algorithm #############
     procedure LinTrans(ct;U)
     1: ct_ <- CMult(ct;u0)
     2: for l = 1 to n−1 do
     3:   ct_ <- Add(ct_,CMult(Rot(ct;l); ul))
     4: end for
     5: return ct_
-    #####################################
     """
+
     M, N = u_matrix.shape
     if (N != M):
         raise Exception("lin_trans only works for square matrices")
@@ -112,7 +112,7 @@ def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys
     if relin_keys is not None:
         evaluator.relinearize_inplace(ct_c, relin_keys)
         evaluator.rescale_to_next_inplace(ct_c)
-    return ct_c 
+    return ct_c
 
 
 def encrypt_array(matrix: np.ndarray, encryptor: Encryptor, encoder: CKKSEncoder, scale: float) -> Ciphertext:

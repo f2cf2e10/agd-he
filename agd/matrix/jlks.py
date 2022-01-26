@@ -1,6 +1,6 @@
 import numpy as np
 import itertools
-from agd.seal import Evaluator, Ciphertext, CKKSEncoder, \
+from agd.seal3_7_2.seal import Evaluator, Ciphertext, CKKSEncoder, \
     CiphertextVector, GaloisKeys, RelinKeys
 from agd.matrix.utils import lin_trans_enc, ca_x_cb
 
@@ -28,7 +28,7 @@ def phi_permutation_k(k, d, nmax, val=1.0):
     vk_matrix = np.zeros(n*n).reshape(n, n)
     for i, j in itertools.product(range(d), range(d)):
         vk_matrix[d*i+j, d*i+((j+k) % d)] = val
-    return vk_matrix 
+    return vk_matrix
 
 
 def psi_permutation_k(k, d, nmax, val=1.0):
@@ -57,7 +57,7 @@ def matrix_multiplication(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluat
     ct_ak = CiphertextVector()
     ct_bk = CiphertextVector()
     for k in range(1, d):
-        vk_matrix = phi_permutation_k(k, d, nmax, scale)
+        vk_matrix = phi_permutation_k(k, d, nmax, 1.0)
         wk_matrix = psi_permutation_k(k, d, nmax, 1.0)
         if vk_matrix.sum() == 0 or wk_matrix.sum() == 0:
             continue
