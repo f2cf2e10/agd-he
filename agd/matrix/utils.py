@@ -1,5 +1,5 @@
 import numpy as np
-from agd.seal3_7_2.seal import Encryptor, Evaluator, Decryptor, \
+from agd.seal.seal import Encryptor, Evaluator, Decryptor, \
     CKKSEncoder, Evaluator, Ciphertext, CKKSEncoder, \
     CiphertextVector, GaloisKeys, RelinKeys, DoubleVector, \
     Plaintext

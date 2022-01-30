@@ -1,6 +1,6 @@
 import numpy as np
 import itertools
-from agd.seal3_7_2.seal import Evaluator, Ciphertext, CKKSEncoder, \
+from agd.seal.seal import Evaluator, Ciphertext, CKKSEncoder, \
     CiphertextVector, GaloisKeys, RelinKeys
 from agd.matrix.utils import lin_trans_enc, ca_x_cb
 

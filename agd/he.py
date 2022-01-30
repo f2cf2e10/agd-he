@@ -1,5 +1,5 @@
 import numpy as np
-from agd.seal3_7_2.seal import Evaluator, Ciphertext, CKKSEncoder, \
+from agd.seal.seal import Evaluator, Ciphertext, CKKSEncoder, \
     GaloisKeys, RelinKeys
 
 def acg_qp(Q: np.ndarray, p: np.ndarray, beta: float, alpha: float, n: int, x0: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

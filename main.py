@@ -21,9 +21,10 @@ p = np.array([[1.0], [1.0]])
 d, _ = Q.shape
 
 
-def f(x): return x.T.dot(Q).dot(x) + p.T.dot(x)
+def f(x): return 0.5*x.T.dot(Q).dot(x) + p.T.dot(x)
 def df(x): return Q.dot(x) + p
 
+np.inv(Q).dot()
 
 # Steps
 bits = [27, 54, 109, 218, 438, 881]
