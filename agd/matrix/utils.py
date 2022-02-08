@@ -121,10 +121,10 @@ evaluator.multiply_plain(ct
     if val is not None:
         acc.append(val)
     for l in range(1, N):
-        val = get_diag_rotate_vec_and_multiply(u_matrix, l, ct, -l)
+        val = get_diag_rotate_vec_and_multiply(u_matrix, l, ct, l)
         if val is not None:
             acc.append(val)
-        val = get_diag_rotate_vec_and_multiply(u_matrix, -l, ct, l)
+        val = get_diag_rotate_vec_and_multiply(u_matrix, -l, ct, -l)
         if val is not None:
             acc.append(val)
 
