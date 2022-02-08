@@ -42,11 +42,9 @@ def matrix_multiplication(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluat
         ct_bk.append(lin_trans_enc(wk_matrix, ct_b, evaluator,
                      encoder, gal_keys, relin_keys))
 
-    ct_ab = Ciphertext()
-    for k in range(len(ct_ak)):
+    ct_ab = ca_x_cb(ct_ak[0], ct_bk[0], evaluator, relin_keys)
+    for k in range(1,len(ct_ak)):
         ct_abk = ca_x_cb(ct_ak[k], ct_bk[k], evaluator, relin_keys)
-        if (k == 0):
-            ct_ab = ct_abk
-        else:
-            evaluator.add_inplace(ct_ab, ct_abk)
+        evaluator.add_inplace(ct_ab, ct_abk)
+
     return ct_ab

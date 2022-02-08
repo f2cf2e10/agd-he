@@ -1,3 +1,4 @@
+from xmlrpc.client import boolean
 import numpy as np
 from agd.seal.seal import Encryptor, Evaluator, Decryptor, \
     CKKSEncoder, Evaluator, Ciphertext, CKKSEncoder, \
@@ -18,10 +19,16 @@ def squarify(matrix: np.ndarray, val: float, n: int = None):
     return np.pad(matrix, padding, mode='constant', constant_values=val)
 
 
-def diag_repr(u_matrix: np.ndarray, i: int) -> np.ndarray:
+def diag_repr(u_matrix: np.ndarray, i: int, pad_zero: boolean = True) -> np.ndarray:
     N, M = u_matrix.shape
     if (N != M):
         raise Exception("diag_repr only works for square matrices")
+    if pad_zero:
+        diag = np.diagonal(u_matrix, i)
+        if i > 0:
+            return np.concatenate([diag, np.zeros(N-len(diag))])
+        else:
+            return np.concatenate([np.zeros(N-len(diag)), diag])
     else:
         result = np.concatenate(
             [np.diag(u_matrix, i), np.diag(u_matrix, -N+i)])
@@ -30,14 +37,29 @@ def diag_repr(u_matrix: np.ndarray, i: int) -> np.ndarray:
         return result
 
 
-def lin_trans(u_matrix: np.ndarray, c: np.ndarray) -> np.ndarray:
-    N = len(c)
-    acc = c * 0
-    for l in range(N):
-        ul_vec = diag_repr(u_matrix, l)
-        c_l = np.roll(c, -l)
-        acc = acc + ul_vec * c_l
-    return acc
+def lin_trans(u_matrix: np.ndarray, c: np.ndarray, d: int) -> np.ndarray:
+    N, M = u_matrix.shape
+    if (N != M):
+        raise Exception("lin_trans only works for square matrices")
+    if (N > 2*d):
+        acc = diag_repr(u_matrix, 0) * c
+        for l in range(1, d):
+            ul_vec = diag_repr(u_matrix, l)
+            c_l = np.roll(c, -l)
+            ul_vec_ = diag_repr(u_matrix, -l)
+            c_l_ = np.roll(c, l)
+            acc = acc + ul_vec * c_l + ul_vec_ * c_l_
+        return acc
+    elif (d == N):
+        acc = c * 0
+        for l in range(d):
+            ul_vec = diag_repr(u_matrix, l, False)
+            c_l = np.roll(c, -l)
+            acc = acc + ul_vec * c_l
+        return acc
+    else:
+        raise Exception(
+            "lin_trans only works with matrices with dimension N>2d or N=d")
 
 
 def lin_trans_enc(u_matrix: np.ndarray, ct: Ciphertext, evaluator: Evaluator, encoder: CKKSEncoder,
@@ -71,29 +93,41 @@ evaluator.multiply_plain(ct
     4: end for
     5: return ct_
     """
-
     M, N = u_matrix.shape
     if (N != M):
         raise Exception("lin_trans only works for square matrices")
+    nmax = encoder.slot_count()
+    if N*M > nmax/2:
+        raise Exception(
+            "Matrix dimenson is higher than the one suported by the encoder")
     scale = ct.scale()
     parms_id = ct.parms_id()
     acc = CiphertextVector()
-    for l in range(N):
-        ul_vec_np = diag_repr(u_matrix, l)
-        if np.abs(ul_vec_np).sum() == 0:
-            continue
-        ul_vec = DoubleVector(ul_vec_np.tolist())
-        ul = Plaintext()
-        encoder.encode(ul_vec, scale, ul)
-        # Encrypted addition and subtraction require that the scales of the inputs are
-        # the same, and also that the encryption parameters (parms_id) match. If there
-        # is a mismatch, Evaluator will throw an exception.
-        # Here we make sure to encode ul with appropriate encryption parameters (parms_id).
-        evaluator.mod_switch_to_inplace(ul, parms_id)
-        ct_l = Ciphertext()
-        evaluator.rotate_vector(ct, l, gal_keys, ct_l)
-        evaluator.multiply_plain_inplace(ct_l, ul)
-        acc.append(ct_l)
+
+    def get_diag_rotate_vec_and_multiply(matrix: np.ndarray, diag: int, array: Ciphertext, rotate: int):
+        matrix_diag = diag_repr(matrix, diag)
+        if sum(matrix_diag) == 0:
+            return None
+        vec_diag = DoubleVector(matrix_diag.tolist())
+        vec_diag_enc = Plaintext()
+        encoder.encode(vec_diag, scale, vec_diag_enc)
+        evaluator.mod_switch_to_inplace(vec_diag_enc, parms_id)
+        vec_rot = Ciphertext()
+        evaluator.rotate_vector(array, rotate, gal_keys, vec_rot)
+        evaluator.multiply_plain_inplace(vec_rot, vec_diag_enc)
+        return vec_rot
+
+    val = get_diag_rotate_vec_and_multiply(u_matrix, 0, ct, 0)
+    if val is not None:
+        acc.append(val)
+    for l in range(1, N):
+        val = get_diag_rotate_vec_and_multiply(u_matrix, l, ct, -l)
+        if val is not None:
+            acc.append(val)
+        val = get_diag_rotate_vec_and_multiply(u_matrix, -l, ct, l)
+        if val is not None:
+            acc.append(val)
+
     out = Ciphertext()
     evaluator.add_many(acc, out)
     if relin_keys is not None:
@@ -116,12 +150,10 @@ def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys
 
 
 def encrypt_array(matrix: np.ndarray, encryptor: Encryptor, encoder: CKKSEncoder, scale: float) -> Ciphertext:
-    M, N = matrix.shape
-    max_n = encoder.slot_count()
     plain = Plaintext()
     cmatrix = Ciphertext()
-    encoder.encode(DoubleVector((matrix.flatten().tolist())
-                   * int(max_n/N/M)), scale, plain)
+    encoder.encode(DoubleVector(matrix.flatten().tolist()), scale, plain)
+    # encoder.encode(DoubleVector((matrix.flatten().tolist())
     encryptor.encrypt(plain, cmatrix)
     return cmatrix
 
