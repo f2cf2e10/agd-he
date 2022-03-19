@@ -186,5 +186,5 @@ def test_matrix_multiplication_ours_enc_twice():
                   gal_keys, relin_keys, d, 1.)
 
     ABB = decrypt_array(abb_enc, decryptor, ckks_encoder, d, d)
-    assert np.max(np.abs(ABB - 0.5*A.dot(B).dot(B))) < 2E-4
+    assert np.max(np.abs(ABB - 0.5*A.dot(B).dot(B))) < 1E-4
 

@@ -1,31 +1,32 @@
-# Inspired by "Secure Outsourced Matrix Computationand Application to Neural Networks?"
-# Link: https://eprint.iacr.org/2018/1041.pdf
-import mmap
 from agd.seal.seal import EncryptionParameters, scheme_type, \
     SEALContext, print_parameters, KeyGenerator, Encryptor, CoeffModulus, \
     Evaluator, Decryptor, CKKSEncoder, IntVector, Plaintext, Ciphertext, \
     GaloisKeys, RelinKeys, PublicKey, sec_level_type, DoubleVector
 import numpy as np
+from scipy.stats import ortho_group    
+import operator as op
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
 from agd.matrix.jlks import matrix_multiplication as jlks
 from agd.matrix.ours import matrix_multiplication as ours
 from agd.matrix.utils import encrypt_array, squarify, decrypt_array, \
     rescale_and_mod_switch, rescale_and_mod_switch_y_and_add_x, \
     rescale_and_mod_switch_y_and_multiply_x
 
-
 # Problem Inputs plain AGD
-Q = np.array([[2, .5], [.5, 1]])
-p = np.array([[1.0], [1.0]])
-# Matrix dimension
-d, _ = Q.shape
+d = 2
+x_opt = -1*np.ones(d).reshape(d, -1)
 
-
-def f(x): return 0.5*x.T.dot(Q).dot(x) + p.T.dot(x)
-def df(x): return Q.dot(x) + p
-
-x_opt = -np.linalg.inv(Q).dot(p)
+def get_random_Q_p(k, size=d):
+    S = ortho_group.rvs(d)
+    L = np.random.rand(d)
+    idxmax = np.argmax(L)
+    idxmin = np.argmin(L)
+    L[idxmax] = k * L[idxmin]
+    Q = S.dot(np.diag(L)).dot(S.T)
+    p = np.random.rand(size, 1)
+    return Q, p
 
 # Steps
 bits = [27, 54, 109, 218, 438, 881]
@@ -33,34 +34,51 @@ poly_degree = [2**i for i in range(10, 16)]
 T = 5
 R = 3
 
-# Pre-calculations
-eigenvals = np.linalg.eigvals(Q)
-beta = np.max(eigenvals)
-alpha = np.min(eigenvals)
-kappa = beta/alpha
-gamma = (kappa**0.5-1)/(kappa**0.5+1)
+repeat_each = 10
+step = 10
+kappas = np.array([i for i in range(2, 103, step) for _ in range(repeat_each)])
+repeat = len(kappas) 
 
-repeat = 100
 step = pd.DataFrame(np.zeros((repeat, T)))
 step_he = pd.DataFrame(np.zeros((repeat, T)))
+norm2_noise = pd.DataFrame(np.zeros((repeat, T)))
 
-for i in range(repeat+1):
-    x0 = x_opt if i==0 else np.array([np.random.randn(d)]).T
+np.random.seed(1717171)
+
+for i in range(len(kappas)):
+    #k = np.random.randint(2, 1000)
+    k = kappas[i]
+    Q, _ = get_random_Q_p(k)
+    #setting p to fix x_opt
+    p = -Q.dot(x_opt)  
+
+    # Pre-calculations
+    eigenvals = np.linalg.eigvals(Q)
+    beta = np.max(eigenvals)
+    alpha = np.min(eigenvals)
+    kappa = beta/alpha
+    gamma = (kappa**0.5-1)/(kappa**0.5+1)
+    print("kappa: {}".format(kappa))
+
+    # solution
+    def f(x): return 0.5*x.T.dot(Q).dot(x) + p.T.dot(x)
+    def df(x): return Q.dot(x) + p
+    print("optimal argument: {}".format(x_opt))
+    print("optimal value: {}".format(f(x_opt)))
+ 
+    #x0 = np.array([np.random.randn(d)]).T
+    x0 = x_opt
     # HE parameters
     scale = 2.0**40
 
     parms = EncryptionParameters(scheme_type.ckks)
 
-    #poly_modulus_degree = poly_degree[bits.index(
-    #    next((x for x in bits if x > (120+T*R*40)), None))]
-    poly_modulus_degree = 32768
+    poly_modulus_degree = poly_degree[bits.index(
+        next((x for x in bits if x > (120+T*R*40)), None))]
     parms.set_poly_modulus_degree(poly_modulus_degree)
     parms.set_coeff_modulus(CoeffModulus.Create(
         poly_modulus_degree, IntVector([60] + [40]*T*R + [60])))
 
-    #NOTE: the none means to ommit securiy checks, we are doing it here to push as much as 
-    #possible the poly_modulud_degree
-    #context = SEALContext(parms, True, sec_level_type.none)
     context = SEALContext(parms)
     print_parameters(context)
 
@@ -144,10 +162,23 @@ for i in range(repeat+1):
 
         step_he[t][i] = f(x_dec[:, 0])
         step[t][i] = f(x[:, 0])
+        norm2_noise[t][i] = sum((x_dec[:, 0]-x[:,0])**2)**0.5
         print("==================================================================================")
 
+lm=lambda y: LinearRegression(fit_intercept = True).fit(np.arange(T).reshape(-1, 1), y)
+figure()
+plot(kappas, (step_he-step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
+figure()
+pd.DataFrame((step_he-step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
+columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 
+figure()
+plot(kappas, (norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
+figure()
+pd.DataFrame((norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
+columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(6,6))
+
 # plot first pandas frame in subplot style
 step.boxplot(ax = axs[0,0]) 
 axs[0,0].set_title('Plain AGD')
@@ -168,5 +199,6 @@ axs[1,1].set(xlabel='step', ylabel='100*(f(x)/f(x_he)-1)')
 
 plt.show()
 
-step_he.to_csv("./data/step_he_gaussian_on.csv")
-step.to_csv("./data/step_gaussian_on.csv")
+step_he.to_csv("./data/step_he_large_kappa.csv")
+step.to_csv("./data/step_large_kappa.csv")
+norm2_noise.to_csv("./data/noise_large_kappa.csv")
