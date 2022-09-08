@@ -137,7 +137,7 @@ def test_matrix_multiplication_ours_enc():
     ct_a = encrypt_array(A, encryptor, ckks_encoder, scale)
     ct_b = encrypt_array(B, encryptor, ckks_encoder, scale)
     ab_enc = ours(ct_a, ct_b, evaluator, ckks_encoder,
-                  gal_keys, relin_keys, d, 0.5)
+                  gal_keys, relin_keys, d, 0.5, scale)
     AB = decrypt_array(ab_enc, decryptor, ckks_encoder, d, d)
     assert np.max(np.abs(AB - 0.5*A.dot(B))) < 1E-4
 
@@ -181,9 +181,9 @@ def test_matrix_multiplication_ours_enc_twice():
     ct_a = encrypt_array(A, encryptor, ckks_encoder, scale)
     ct_b = encrypt_array(B, encryptor, ckks_encoder, scale)
     ab_enc = ours(ct_a, ct_b, evaluator, ckks_encoder,
-                  gal_keys, relin_keys, d, 0.5)
+                  gal_keys, relin_keys, d, 0.5, scale)
     abb_enc = ours(ab_enc, ct_b, evaluator, ckks_encoder,
-                  gal_keys, relin_keys, d, 1.)
+                  gal_keys, relin_keys, d, 1., scale)
 
     ABB = decrypt_array(abb_enc, decryptor, ckks_encoder, d, d)
     assert np.max(np.abs(ABB - 0.5*A.dot(B).dot(B))) < 1E-4

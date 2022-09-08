@@ -92,7 +92,7 @@ evaluator.multiply_plain(ct
     3:   ct_ <- Add(ct_,CMult(Rot(ct;l); ul))
     4: end for
     5: return ct_
-    """
+    """ 
     M, N = u_matrix.shape
     if (N != M):
         raise Exception("lin_trans only works for square matrices")
@@ -136,16 +136,18 @@ evaluator.multiply_plain(ct
     return out
 
 
-def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys: RelinKeys = None):
+def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys: RelinKeys = None, scale:float=None):
     """
     Element-wise product of cipherthextA and ciphertextB
     """
-    auto_rescale_and_mod_switch([ct_a, ct_b], evaluator)
+    auto_rescale_and_mod_switch([ct_a, ct_b], evaluator, scale)
     ct_c = Ciphertext()
     evaluator.multiply(ct_a, ct_b, ct_c)
     if relin_keys is not None:
         evaluator.relinearize_inplace(ct_c, relin_keys)
         evaluator.rescale_to_next_inplace(ct_c)
+    #if scale is not None:
+    #    ct_c.set_scale(scale)
     return ct_c
 
 
@@ -172,10 +174,10 @@ def rescale_and_mod_switch(x: Ciphertext, new_scale: float, new_parms: List[int]
     evaluator.mod_switch_to_inplace(x, new_parms)
 
 
-def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator: Evaluator):
+def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator: Evaluator, scale:float=None):
     scales = [i.scale() for i in x]
     parms = [i.parms_id() for i in x]
-    new_scale = np.max(scales)
+    new_scale = np.max(scales) if scale is None else scale
     i_scale = np.argmax(scales)
     new_parms = parms[i_scale]
     for xi in x:
@@ -203,9 +205,10 @@ def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y: Ciphertext, evaluator: 
     return z
 
 
-def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: Evaluator, encoder: CKKSEncoder, relin_keys: RelinKeys):
+def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: Evaluator, encoder: CKKSEncoder, relin_keys: RelinKeys, scale:float=None):
     y_ = Plaintext()
-    encoder.encode(y, x.scale(), y_)
+    _scale = scale if scale is not None else x.scale()
+    encoder.encode(y, _scale, y_)
     evaluator.mod_switch_to_inplace(y_, x.parms_id())
     z = Ciphertext()
     evaluator.multiply_plain(x, y_, z)
