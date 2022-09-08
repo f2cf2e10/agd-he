@@ -141,6 +141,48 @@ def test_matrix_multiplication_ours_enc():
     AB = decrypt_array(ab_enc, decryptor, ckks_encoder, d, d)
     assert np.max(np.abs(AB - 0.5*A.dot(B))) < 1E-4
 
+def test_matrix_vector_multiplication_ours_enc():
+    d = 5
+    A = np.array([np.random.randn(d*d)]).reshape((d, d))
+    b = squarify(np.array([np.random.randn(d)]).reshape((d, 1)),0)
+
+    scale = 2.0**40
+
+    parms = EncryptionParameters(scheme_type.ckks)
+
+    T = 14
+    poly_modulus_degree = 2**(T+1)
+    parms.set_poly_modulus_degree(poly_modulus_degree)
+    parms.set_coeff_modulus(CoeffModulus.Create(
+        poly_modulus_degree, IntVector([60] + [40]*T + [60])))
+
+    context = SEALContext(parms)
+    print_parameters(context)
+
+    keygen = KeyGenerator(context)
+    secret_key = keygen.secret_key()
+    
+    public_key = PublicKey()
+    keygen.create_public_key(public_key)
+   
+    relin_keys = RelinKeys()
+    keygen.create_relin_keys(relin_keys)
+
+    gal_keys = GaloisKeys() 
+    keygen.create_galois_keys(gal_keys)
+
+    encryptor = Encryptor(context, public_key)
+    evaluator = Evaluator(context)
+    decryptor = Decryptor(context, secret_key)
+    ckks_encoder = CKKSEncoder(context)
+
+    # Problem Inputs HE AGD
+    ct_a = encrypt_array(A, encryptor, ckks_encoder, scale)
+    ct_b = encrypt_array(squarify(b,0), encryptor, ckks_encoder, scale)
+    ab_enc = ours(ct_a, ct_b, evaluator, ckks_encoder,
+                  gal_keys, relin_keys, d, 0.5)
+    AB = decrypt_array(ab_enc, decryptor, ckks_encoder, d, d)
+    assert np.max(np.abs(AB - 0.5*A.dot(b))) < 1E-4
 
 def test_matrix_multiplication_ours_enc_twice():
     d = 5

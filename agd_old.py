@@ -8,7 +8,6 @@ import operator as op
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from agd.matrix.jlks import matrix_multiplication as jlks
 from agd.matrix.ours import matrix_multiplication as ours
 from agd.matrix.utils import encrypt_array, squarify, decrypt_array, \
     rescale_and_mod_switch, rescale_and_mod_switch_y_and_add_x, \
