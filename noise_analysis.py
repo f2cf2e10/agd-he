@@ -43,6 +43,6 @@ for i in range(int(N/2)):
     x = lin_trans_enc(np.eye(10), x, evaluator, ckks_encoder, gal_keys, relin_keys) 
     y = lin_trans_enc(np.eye(10), y, evaluator, ckks_encoder, gal_keys, relin_keys) 
     z = jlks(x, y, evaluator, ckks_encoder, gal_keys, relin_keys, 10, 1.)
-    z_dec = decrypt_array(z, decryptor, ckks_encoder, 10, 10) 
+    z_dec = decrypt_array(z, decryptor, ckks_encoder, 10, 10)
     print(np.abs(x0.dot(x0.T)[0][0] - z_dec[0, 0]))
 

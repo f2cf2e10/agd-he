@@ -1,37 +1,36 @@
-from xmlrpc.client import boolean
 import numpy as np
 from agd.seal.seal import Encryptor, Evaluator, Decryptor, \
     CKKSEncoder, Evaluator, Ciphertext, CKKSEncoder, \
     CiphertextVector, GaloisKeys, RelinKeys, DoubleVector, \
-    Plaintext
-from typing import List
+    Plaintext, BatchEncoder, Int64Vector
+from typing import List, Union
 
 
 def squarify(matrix: np.ndarray, val: float, n: int = None):
     a, b = matrix.shape
     if n is None:
         if a > b:
-            padding = ((0, 0), (0, a-b))
+            padding = ((0, 0), (0, a - b))
         else:
-            padding = ((0, b-a), (0, 0))
+            padding = ((0, b - a), (0, 0))
     else:
-        padding = ((0, max(n-a, 0)), (0, max(n-b, 0)))
+        padding = ((0, max(n - a, 0)), (0, max(n - b, 0)))
     return np.pad(matrix, padding, mode='constant', constant_values=val)
 
 
-def diag_repr(u_matrix: np.ndarray, i: int, pad_zero: boolean = True) -> np.ndarray:
+def diag_repr(u_matrix: np.ndarray, i: int, pad_zero: bool = True) -> np.ndarray:
     N, M = u_matrix.shape
     if (N != M):
         raise Exception("diag_repr only works for square matrices")
     if pad_zero:
         diag = np.diagonal(u_matrix, i)
         if i > 0:
-            return np.concatenate([diag, np.zeros(N-len(diag))])
+            return np.concatenate([diag, np.zeros(N - len(diag))])
         else:
-            return np.concatenate([np.zeros(N-len(diag)), diag])
+            return np.concatenate([np.zeros(N - len(diag)), diag])
     else:
         result = np.concatenate(
-            [np.diag(u_matrix, i), np.diag(u_matrix, -N+i)])
+            [np.diag(u_matrix, i), np.diag(u_matrix, -N + i)])
         if len(result) != N:
             raise Exception("diag_repr index is out of bounds")
         return result
@@ -41,7 +40,7 @@ def lin_trans(u_matrix: np.ndarray, c: np.ndarray, d: int) -> np.ndarray:
     N, M = u_matrix.shape
     if (N != M):
         raise Exception("lin_trans only works for square matrices")
-    if (N > 2*d):
+    if (N > 2 * d):
         acc = diag_repr(u_matrix, 0) * c
         for l in range(1, d):
             ul_vec = diag_repr(u_matrix, l)
@@ -62,8 +61,8 @@ def lin_trans(u_matrix: np.ndarray, c: np.ndarray, d: int) -> np.ndarray:
             "lin_trans only works with matrices with dimension N>2d or N=d")
 
 
-def lin_trans_enc(u_matrix: np.ndarray, ct: Ciphertext, evaluator: Evaluator, encoder: CKKSEncoder,
-                  gal_keys: GaloisKeys, relin_keys: RelinKeys = None) -> Ciphertext:
+def lin_trans_enc(u_matrix: np.ndarray, ct: Ciphertext, evaluator: Evaluator, encoder: Union[BatchEncoder, CKKSEncoder],
+                  gal_keys: GaloisKeys, relin_keys: RelinKeys = None, scale: float = None) -> Ciphertext:
     """
     From page 5 at https://eprint.iacr.org/2018/1041.pdf
 
@@ -92,15 +91,16 @@ evaluator.multiply_plain(ct
     3:   ct_ <- Add(ct_,CMult(Rot(ct;l); ul))
     4: end for
     5: return ct_
-    """ 
+    """
     M, N = u_matrix.shape
     if (N != M):
         raise Exception("lin_trans only works for square matrices")
     nmax = encoder.slot_count()
-    if N*M > nmax/2:
+    if N * M > nmax / 2:
         raise Exception(
             "Matrix dimenson is higher than the one suported by the encoder")
-    scale = ct.scale()
+    if scale is None:
+        scale = ct.scale()
     parms_id = ct.parms_id()
     acc = CiphertextVector()
 
@@ -108,13 +108,16 @@ evaluator.multiply_plain(ct
         matrix_diag = diag_repr(matrix, diag)
         if sum(matrix_diag) == 0:
             return None
-        vec_diag = DoubleVector(matrix_diag.tolist())
         vec_diag_enc = Plaintext()
-        encoder.encode(vec_diag, scale, vec_diag_enc)
-        evaluator.mod_switch_to_inplace(vec_diag_enc, parms_id)
+        encode(matrix_diag, encoder, vec_diag_enc, scale)
         vec_rot = Ciphertext()
-        evaluator.rotate_vector(array, rotate, gal_keys, vec_rot)
-        evaluator.multiply_plain_inplace(vec_rot, vec_diag_enc)
+        if isinstance(encoder, CKKSEncoder):
+            evaluator.mod_switch_to_inplace(vec_diag_enc, parms_id)
+            evaluator.rotate_vector(array, rotate, gal_keys, vec_rot)
+            evaluator.multiply_plain_inplace(vec_rot, vec_diag_enc)
+        if isinstance(encoder, BatchEncoder):
+            evaluator.rotate_rows(array, rotate, gal_keys, vec_rot)
+            evaluator.multiply_plain_inplace(vec_rot, vec_diag_enc)
         return vec_rot
 
     val = get_diag_rotate_vec_and_multiply(u_matrix, 0, ct, 0)
@@ -132,11 +135,16 @@ evaluator.multiply_plain(ct
     evaluator.add_many(acc, out)
     if relin_keys is not None:
         evaluator.relinearize_inplace(out, relin_keys)
-        evaluator.rescale_to_next_inplace(out)
+        if isinstance(encoder, CKKSEncoder):
+            evaluator.rescale_to_next_inplace(out)
+    if isinstance(encoder, BatchEncoder):
+        evaluator.mod_switch_to_next_inplace(out)
+
     return out
 
 
-def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys: RelinKeys = None, scale:float=None):
+def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys: RelinKeys = None,
+            scale: float = None):
     """
     Element-wise product of cipherthextA and ciphertextB
     """
@@ -146,26 +154,44 @@ def ca_x_cb(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, relin_keys
     if relin_keys is not None:
         evaluator.relinearize_inplace(ct_c, relin_keys)
         evaluator.rescale_to_next_inplace(ct_c)
-    #if scale is not None:
+    # if scale is not None:
     #    ct_c.set_scale(scale)
     return ct_c
 
 
-def encrypt_array(matrix: np.ndarray, encryptor: Encryptor, encoder: CKKSEncoder, scale: float) -> Ciphertext:
+def encode(matrix: np.ndarray, encoder: Union[BatchEncoder, CKKSEncoder], plain: Plaintext, scale: float):
+    if isinstance(encoder, CKKSEncoder):
+        encoder.encode(DoubleVector(matrix.flatten().tolist()), scale, plain)
+    if isinstance(encoder, BatchEncoder):
+        encoder.encode(Int64Vector((matrix / scale).astype(np.int64).flatten().tolist()), plain)
+
+
+def decode(encoder: Union[BatchEncoder, CKKSEncoder], plain: Plaintext, scale: float = None) -> np.ndarray:
+    if isinstance(encoder, CKKSEncoder):
+        vec = DoubleVector()
+        encoder.decode(plain, vec)
+        return np.array(vec)
+    if isinstance(encoder, BatchEncoder):
+        vec = Int64Vector()
+        encoder.decode(plain, vec)
+        return np.array(vec) * scale
+
+
+def encrypt_array(matrix: np.ndarray, encryptor: Encryptor, encoder: Union[BatchEncoder, CKKSEncoder],
+                  scale: float) -> Ciphertext:
     plain = Plaintext()
     cmatrix = Ciphertext()
-    encoder.encode(DoubleVector(matrix.flatten().tolist()), scale, plain)
-    # encoder.encode(DoubleVector((matrix.flatten().tolist())
+    encode(matrix, encoder, plain, scale)
     encryptor.encrypt(plain, cmatrix)
     return cmatrix
 
 
-def decrypt_array(cipher: Ciphertext, decryptor: Decryptor, encoder: CKKSEncoder, m: int, n: int) -> np.ndarray:
+def decrypt_array(cipher: Ciphertext, decryptor: Decryptor, encoder: Union[BatchEncoder, CKKSEncoder], m: int, n: int,
+                  scale: float = None) -> np.ndarray:
     plain = Plaintext()
     decryptor.decrypt(cipher, plain)
-    vec = DoubleVector()
-    encoder.decode(plain, vec)
-    matrix = np.array(vec[0:(m*n)]).reshape(m, n)
+    vec = decode(encoder, plain, scale)
+    matrix = np.array(vec[0:(m * n)]).reshape(m, n)
     return matrix
 
 
@@ -174,7 +200,7 @@ def rescale_and_mod_switch(x: Ciphertext, new_scale: float, new_parms: List[int]
     evaluator.mod_switch_to_inplace(x, new_parms)
 
 
-def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator: Evaluator, scale:float=None):
+def auto_rescale_and_mod_switch(x: List[Ciphertext], evaluator: Evaluator, scale: float = None):
     scales = [i.scale() for i in x]
     parms = [i.parms_id() for i in x]
     new_scale = np.max(scales) if scale is None else scale
@@ -190,10 +216,10 @@ def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y: Ciphertext, evaluator: 
     # There are many ways to fix this problem. Since the prime numbers are really close
     # we can simply "lie" to Microsoft SEAL and set the scales to be the
     # same.
-    #print("The exact scales of all three terms are different:")
-    #print("    + Exact scale in x: {0:0.10f}".format(x.scale()))
-    #print("    + Exact scale in y: {0:0.10f}".format(y.scale()))
-    #print("    + scale ratio: {0:0.10f}".format(1-x.scale()/y.scale()))
+    # print("The exact scales of all three terms are different:")
+    # print("    + Exact scale in x: {0:0.10f}".format(x.scale()))
+    # print("    + Exact scale in y: {0:0.10f}".format(y.scale()))
+    # print("    + scale ratio: {0:0.10f}".format(1-x.scale()/y.scale()))
     y.set_scale(x.scale())
     # We still have a problem with mismatching encryption parameters. This is easy
     # to fix by using traditional modulus switching (no rescaling). CKKS supports
@@ -205,10 +231,11 @@ def rescale_and_mod_switch_y_and_add_x(x: Ciphertext, y: Ciphertext, evaluator: 
     return z
 
 
-def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: Evaluator, encoder: CKKSEncoder, relin_keys: RelinKeys, scale:float=None):
+def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: Evaluator, encoder: CKKSEncoder,
+                                            relin_keys: RelinKeys, scale: float = None):
     y_ = Plaintext()
     _scale = scale if scale is not None else x.scale()
-    encoder.encode(y, _scale, y_)
+    encode(y, encoder, y_, _scale)
     evaluator.mod_switch_to_inplace(y_, x.parms_id())
     z = Ciphertext()
     evaluator.multiply_plain(x, y_, z)

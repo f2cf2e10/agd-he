@@ -49,8 +49,8 @@ ckks_encoder = CKKSEncoder(context)
 Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
 p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
 x_enc0 = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-I_enc = encrypt_array(squarify(np.eye(d), 0.0, d), 
-        encryptor, ckks_encoder, scale)
+I_enc = encrypt_array(squarify(np.eye(d), 0.0, d),
+                      encryptor, ckks_encoder, scale)
 
 Q_dec = decrypt_array(Q_enc, decryptor, ckks_encoder, d, d)
 p_dec = decrypt_array(p_enc, decryptor, ckks_encoder, d, d)
