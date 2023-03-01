@@ -5,17 +5,15 @@ from agd.seal.seal import EncryptionParameters, scheme_type, \
     GaloisKeys, RelinKeys, PublicKey
 import numpy as np
 from scipy.stats import ortho_group
-import operator as op
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
 from agd.matrix.utils import decrypt_array, encrypt_array, squarify
 from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 
 # Problem Inputs plain GD
+# Matrix params
 d = 2
-x_opt = 1 * np.ones(d).reshape(d, -1)
-
+ks = np.arange(1.5, 10.5, 0.5)
 
 def get_random_Q_p(k, size, integer):
     S = ortho_group.rvs(size)
@@ -34,55 +32,36 @@ poly_degree = [2 ** i for i in range(10, 16)]
 T = 9
 R = 2
 
-# repeat_each = 100
-# step = 200
-# kappas = np.array([i for i in range(2, 103, step) for _ in range(repeat_each)])
-# repeat = len(kappas)
-repeat = 1
 
 # Variables to store data for analysis later on
-step = dict(zip(range(T + 1), [pd.DataFrame(np.zeros((repeat, 2)), columns=["x[0]", "x[1]"]) for i in range(T + 1)]))
-step_he = dict(zip(range(T + 1), [pd.DataFrame(np.zeros((repeat, 2)), columns=["x[0]", "x[1]"]) for i in range(T + 1)]))
-norm2_noise = pd.DataFrame(np.zeros((repeat, T + 1)))
-f_step = pd.DataFrame(np.zeros((repeat, T + 1)))
-f_step_he = pd.DataFrame(np.zeros((repeat, T + 1)))
+step = dict(zip(range(T + 1), [pd.DataFrame(np.zeros((len(ks), 2)), columns=["x[0]", "x[1]"]) for i in range(T + 1)]))
+step_he = dict(zip(range(T + 1), [pd.DataFrame(np.zeros((len(ks), 2)), columns=["x[0]", "x[1]"]) for i in range(T + 1)]))
+norm2_noise = pd.DataFrame(np.zeros((len(ks), T + 1)))
+f_step = pd.DataFrame(np.zeros((len(ks), T + 1)))
+f_step_he = pd.DataFrame(np.zeros((len(ks), T + 1)))
 np.random.seed(1717171)
 
-k = 1.5
-Q, _ = get_random_Q_p(k, d, False)
-p = -Q.dot(x_opt)
 
-eigenvals = np.linalg.eigvals(Q)
-beta = np.max(eigenvals)
-alpha = np.min(eigenvals)
-kappa = beta / alpha
-gamma = (kappa ** 0.5 - 1) / (kappa ** 0.5 + 1)
-print("kappa: {}".format(kappa))
+def f(x):
+    return 0.5 * x.T.dot(Q).dot(x) + p.T.dot(x)
 
-for i in range(repeat):
-    # k = np.random.randint(2, 1000)
-    # k = kappas[i]
-    # Q, _ = get_random_Q_p(k)
-    # setting p to fix x_opt
-    # p = -Q.dot(x_opt)
+def df(x):
+    return Q.dot(x) + p
 
-    # Pre-calculations
-    # eigenvals = np.linalg.eigvals(Q)
-    # beta = np.max(eigenvals)
-    # alpha = np.min(eigenvals)
-    # kappa = beta/alpha
-    # gamma = (kappa**0.5-1)/(kappa**0.5+1)
-    # print("kappa: {}".format(kappa))
+
+for i, k in enumerate(ks):
+    Q, p = get_random_Q_p(k, d, False)
+    # x_opt = 1 * np.ones(d).reshape(d, -1)
+    x_opt = -np.linalg.inv(Q).dot(p)
+
+    eigenvals = np.linalg.eigvals(Q)
+    beta = np.max(eigenvals)
+    alpha = np.min(eigenvals)
+    kappa = beta / alpha
+    gamma = (kappa ** 0.5 - 1) / (kappa ** 0.5 + 1)
+    print("kappa: {}".format(kappa))
 
     # solution
-    def f(x):
-        return 0.5 * x.T.dot(Q).dot(x) + p.T.dot(x)
-
-
-    def df(x):
-        return Q.dot(x) + p
-
-
     print("optimal argument: {}".format(x_opt))
     print("optimal value: {}".format(f(x_opt)))
 

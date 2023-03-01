@@ -1,4 +1,4 @@
-from agd.agd import agd_qp, he_agd_qp
+from agd.agd import agd_qp, he_agd_qp_ckks
 from agd.seal.seal import EncryptionParameters, scheme_type, \
     SEALContext, print_parameters, KeyGenerator, Encryptor, CoeffModulus, \
     Evaluator, Decryptor, CKKSEncoder, IntVector, Plaintext, Ciphertext, \
@@ -129,8 +129,8 @@ for i in range(repeat):
     norm2_noise[0][i] = sum((x0_dec[:, 0]-x0[:,0])**2)**0.5
 
     xs = agd_qp(Q, p, T, x0)
-    xs_enc = he_agd_qp(Q_enc, p_enc, d, alpha, beta, T, x0_enc, y0_enc, evaluator,
-                      ckks_encoder, gal_keys, relin_keys, encryptor, scale)
+    xs_enc = he_agd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T, x0_enc, y0_enc, evaluator,
+                            ckks_encoder, gal_keys, relin_keys, encryptor, scale)
     xs_dec = [decrypt_array(val, decryptor, ckks_encoder, 2, 2) for val in xs_enc]
     for t in range(len(xs_dec)):
         x = xs[t]

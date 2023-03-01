@@ -174,11 +174,11 @@ for i in range(len(kappas)):
 lm=lambda y: LinearRegression(fit_intercept = True).fit(np.arange(T).reshape(-1, 1), y)
 plt.plot(kappas, (step_he-step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
 pd.DataFrame((step_he-step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
-columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
+             columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 
 plt.plot(kappas, (norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
 pd.DataFrame((norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
-columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
+             columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(6,6))
 
 # plot first pandas frame in subplot style

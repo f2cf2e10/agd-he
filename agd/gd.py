@@ -76,21 +76,20 @@ def he_gd_qp_bfv(Q_enc: Ciphertext, p_enc: Ciphertext, d: int, alpha: float, bet
     eta = np.int64(np.ceil(2 / (alpha + beta)))
 
     eta_ = Plaintext()
-    encode(np.array([-eta]*d*d), encoder, eta_, 1)
+    encode(np.array([-eta] * d * d), encoder, eta_, 1)
     p_enc_eta = Ciphertext()
     evaluator.multiply_plain(p_enc, eta_, p_enc_eta)
     evaluator.relinearize_inplace(p_enc_eta, relin_keys)
 
     for t in range(1, T + 1):
-        Q_dot_x_enc = ours_bfv(Q_enc, x_enc, evaluator,
-                               encoder, gal_keys, relin_keys,
-                               d, -eta, scale)
+        Q_dot_x_enc = ours_bfv(Q_enc, x_enc, evaluator, encoder, gal_keys, relin_keys, d, -eta, scale)
         evaluator.relinearize_inplace(Q_dot_x_enc, relin_keys)
 
         evaluator.add(Q_dot_x_enc, p_enc_eta, x_enc)
         steps[t] = x_enc
 
     return steps
+
 
 def he_random_gd_qp(Q_enc: Ciphertext, p_enc: Ciphertext, d: int, alpha: float, beta: float, T: int,
                     x0_enc: Ciphertext, evaluator: Evaluator, encoder: CKKSEncoder,

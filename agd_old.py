@@ -206,11 +206,11 @@ step_he[0].plot(kind='scatter', x=0, y=1)
 lm=lambda y: LinearRegression(fit_intercept = True).fit(np.arange(T).reshape(-1, 1), y)
 plt.plot(kappas, (f_step_he-f_step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
 pd.DataFrame((f_step_he-f_step).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
-columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
+             columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 
 plt.plot(kappas, (norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values, '.')
 pd.DataFrame((norm2_noise).apply(lambda x: lm(np.log(x)).coef_[0], axis=1).values.reshape(len(kappas)//repeat_each, repeat_each).T,
-columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
+             columns=kappas.reshape(len(kappas)//repeat_each, repeat_each).T[0]).boxplot()
 fig, axs = plt.subplots(nrows=2,ncols=2,figsize=(6,6))
 
 # plot first pandas frame in subplot style
