@@ -137,8 +137,8 @@ evaluator.multiply_plain(ct
         evaluator.relinearize_inplace(out, relin_keys)
         if isinstance(encoder, CKKSEncoder):
             evaluator.rescale_to_next_inplace(out)
-    if isinstance(encoder, BatchEncoder):
-        evaluator.mod_switch_to_next_inplace(out)
+    #if isinstance(encoder, BatchEncoder):
+    #    evaluator.mod_switch_to_next_inplace(out)
 
     return out
 

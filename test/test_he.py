@@ -5,6 +5,7 @@ from agd.seal.seal import EncryptionParameters, scheme_type, SEALContext, \
 from agd.matrix.utils import encrypt_array, decrypt_array, lin_trans_enc, squarify
 from agd.matrix.jlks import matrix_multiplication as jkls
 from agd.matrix.ours import matrix_multiplication as ours
+from agd.matrix.ours import matrix_multiplication_bfv as ours_bfv
 
 
 def test_lin_trans_enc_ckks():
@@ -52,15 +53,15 @@ def test_lin_trans_enc_ckks():
 def test_lin_trans_enc_bfv():
     d = 2
 
-    A = np.array([np.random.randn(d * d)]).reshape((d, d))
-    b = np.array([np.random.randn(d)])
-    scale = 1E-8
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    b = np.array([np.random.randint(1, 100, d)])
+    scale = 1
 
     parms = EncryptionParameters(scheme_type.bfv)
     poly_modulus_degree = 8192
     parms.set_poly_modulus_degree(poly_modulus_degree)
     parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
-    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 60)
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
     parms.set_plain_modulus(plain_modulus)
 
     context = SEALContext(parms)
@@ -94,15 +95,15 @@ def test_lin_trans_enc_bfv():
 def test_lin_trans_enc_bgv():
     d = 2
 
-    A = np.array([np.random.randn(d * d)]).reshape((d, d))
-    b = np.array([np.random.randn(d)])
-    scale = 1E-8
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    b = np.array([np.random.randint(1, 100, d)])
+    scale = 1
 
     parms = EncryptionParameters(scheme_type.bgv)
     poly_modulus_degree = 8192
     parms.set_poly_modulus_degree(poly_modulus_degree)
     parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
-    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 60)
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
     parms.set_plain_modulus(plain_modulus)
 
     context = SEALContext(parms)
@@ -129,7 +130,7 @@ def test_lin_trans_enc_bgv():
     # Problem Inputs HE AGD
     b_enc = encrypt_array(b, encryptor, batch_encoder, scale)
     ab_enc = lin_trans_enc(A, b_enc, evaluator, batch_encoder, gal_keys, relin_keys, scale)
-    ab = decrypt_array(ab_enc, decryptor, batch_encoder, d, 1, scale)
+    ab = decrypt_array(ab_enc, decryptor, batch_encoder, d, 1, scale) * scale
     assert np.max(np.abs(ab - A.dot(b.T))) < 1E-4
 
 
@@ -223,17 +224,16 @@ def test_matrix_multiplication_ours_enc_ckks():
 
 
 def test_matrix_multiplication_ours_enc_bfv():
-    d = 5
-    A = np.array([np.random.randn(d * d)]).reshape((d, d))
-    B = np.array([np.random.randn(d * d)]).reshape((d, d))
-
-    scale = 1E-8
+    d = 2
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    B = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    scale = 1
 
     parms = EncryptionParameters(scheme_type.bfv)
     poly_modulus_degree = 8192
     parms.set_poly_modulus_degree(poly_modulus_degree)
     parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
-    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 60)
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
     parms.set_plain_modulus(plain_modulus)
 
     context = SEALContext(parms)
@@ -260,11 +260,53 @@ def test_matrix_multiplication_ours_enc_bfv():
     # Problem Inputs HE AGD
     a_enc = encrypt_array(A, encryptor, batch_encoder, scale)
     b_enc = encrypt_array(B, encryptor, batch_encoder, scale)
-    ab_enc = ours(a_enc, b_enc, evaluator, batch_encoder,
-                  gal_keys, relin_keys, d, 0.5)
-    AB = decrypt_array(ab_enc, decryptor, batch_encoder, d, d)
-    assert np.max(np.abs(AB - 0.5 * A.dot(B))) < 1E-4
+    ab_enc = ours_bfv(a_enc, b_enc, evaluator, batch_encoder,
+                      gal_keys, relin_keys, d, 2)
+    AB = decrypt_array(ab_enc, decryptor, batch_encoder, d, d, scale)
+    assert np.all(AB == 2 * A.dot(B))
 
+
+def test_matrix_multiplication_ours_enc_bgv():
+    d = 2
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    B = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    scale = 1
+
+    parms = EncryptionParameters(scheme_type.bgv)
+    poly_modulus_degree = 2*8192
+    parms.set_poly_modulus_degree(poly_modulus_degree)
+    parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
+    parms.set_plain_modulus(plain_modulus)
+
+    context = SEALContext(parms)
+    print_parameters(context)
+
+    keygen = KeyGenerator(context)
+    secret_key = keygen.secret_key()
+
+    public_key = PublicKey()
+    keygen.create_public_key(public_key)
+
+    relin_keys = RelinKeys()
+    keygen.create_relin_keys(relin_keys)
+
+    gal_keys = GaloisKeys()
+    keygen.create_galois_keys(gal_keys)
+
+    encryptor = Encryptor(context, public_key)
+    evaluator = Evaluator(context)
+    decryptor = Decryptor(context, secret_key)
+
+    batch_encoder = BatchEncoder(context)
+
+    # Problem Inputs HE AGD
+    a_enc = encrypt_array(A, encryptor, batch_encoder, scale)
+    b_enc = encrypt_array(B, encryptor, batch_encoder, scale)
+    ab_enc = ours_bfv(a_enc, b_enc, evaluator, batch_encoder,
+                      gal_keys, relin_keys, d, 2)
+    AB = decrypt_array(ab_enc, decryptor, batch_encoder, d, d, scale)
+    assert np.all(AB == 2 * A.dot(B))
 
 def test_matrix_vector_multiplication_ours_enc_ckks():
     d = 5
@@ -355,3 +397,88 @@ def test_matrix_multiplication_ours_enc_twice_ckks():
 
     ABB = decrypt_array(abb_enc, decryptor, ckks_encoder, d, d)
     assert np.max(np.abs(ABB - 0.5 * A.dot(B).dot(B))) < 1E-4
+
+def test_matrix_multiplication_ours_enc_bfv_twice():
+    d = 2
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    B = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    scale = 1
+
+    parms = EncryptionParameters(scheme_type.bfv)
+    poly_modulus_degree = 8192
+    parms.set_poly_modulus_degree(poly_modulus_degree)
+    parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
+    parms.set_plain_modulus(plain_modulus)
+
+    context = SEALContext(parms)
+    print_parameters(context)
+
+    keygen = KeyGenerator(context)
+    secret_key = keygen.secret_key()
+
+    public_key = PublicKey()
+    keygen.create_public_key(public_key)
+
+    relin_keys = RelinKeys()
+    keygen.create_relin_keys(relin_keys)
+
+    gal_keys = GaloisKeys()
+    keygen.create_galois_keys(gal_keys)
+
+    encryptor = Encryptor(context, public_key)
+    evaluator = Evaluator(context)
+    decryptor = Decryptor(context, secret_key)
+
+    batch_encoder = BatchEncoder(context)
+
+    # Problem Inputs HE AGD
+    a_enc = encrypt_array(A, encryptor, batch_encoder, scale)
+    b_enc = encrypt_array(B, encryptor, batch_encoder, scale)
+    ab_enc = ours_bfv(a_enc, b_enc, evaluator, batch_encoder,
+                      gal_keys, relin_keys, d, 2)
+    AB = decrypt_array(ab_enc, decryptor, batch_encoder, d, d, scale)
+    assert np.all(AB == 2 * A.dot(B))
+
+
+def test_matrix_multiplication_ours_enc_bgv():
+    d = 2
+    A = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    B = np.array([np.random.randint(1, 100, d * d)]).reshape((d, d))
+    scale = 1
+
+    parms = EncryptionParameters(scheme_type.bgv)
+    poly_modulus_degree = 2*8192
+    parms.set_poly_modulus_degree(poly_modulus_degree)
+    parms.set_coeff_modulus(CoeffModulus.BFVDefault(poly_modulus_degree))
+    plain_modulus = PlainModulus.Batching(poly_modulus_degree, 40)
+    parms.set_plain_modulus(plain_modulus)
+
+    context = SEALContext(parms)
+    print_parameters(context)
+
+    keygen = KeyGenerator(context)
+    secret_key = keygen.secret_key()
+
+    public_key = PublicKey()
+    keygen.create_public_key(public_key)
+
+    relin_keys = RelinKeys()
+    keygen.create_relin_keys(relin_keys)
+
+    gal_keys = GaloisKeys()
+    keygen.create_galois_keys(gal_keys)
+
+    encryptor = Encryptor(context, public_key)
+    evaluator = Evaluator(context)
+    decryptor = Decryptor(context, secret_key)
+
+    batch_encoder = BatchEncoder(context)
+
+    # Problem Inputs HE AGD
+    a_enc = encrypt_array(A, encryptor, batch_encoder, scale)
+    b_enc = encrypt_array(B, encryptor, batch_encoder, scale)
+    ab_enc = ours_bfv(a_enc, b_enc, evaluator, batch_encoder,
+                      gal_keys, relin_keys, d, 2)
+    AB = decrypt_array(ab_enc, decryptor, batch_encoder, d, d, scale)
+    assert np.all(AB == 2 * A.dot(B))

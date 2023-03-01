@@ -1,7 +1,7 @@
 import numpy as np
 import itertools
 from agd.seal.seal import Evaluator, Ciphertext, CKKSEncoder, \
-    CiphertextVector, GaloisKeys, RelinKeys
+    CiphertextVector, GaloisKeys, RelinKeys, BatchEncoder
 from agd.matrix.utils import lin_trans_enc, ca_x_cb
 
 
@@ -49,5 +49,39 @@ def matrix_multiplication(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluat
         ct_abk = ca_x_cb(ct_ak[k], ct_bk[k], evaluator, relin_keys, scale)
 
         evaluator.add_inplace(ct_ab, ct_abk)
+
+    return ct_ab
+
+def matrix_multiplication_bfv(ct_a: Ciphertext, ct_b: Ciphertext, evaluator: Evaluator, encoder: BatchEncoder,
+                          gal_keys: GaloisKeys, relin_keys: RelinKeys, d: int, alpha: float = 1.0,
+                          scale: float = None) -> Ciphertext:
+    """
+    Proposed method for Matrix product of CiphertextA and CiphertextB
+    """
+    nmax = encoder.slot_count()
+    if d * d > nmax / 2:
+        raise Exception(
+            "Matrix dimenson is higher than the one suported by the encoder")
+    ct_ak = CiphertextVector()
+    ct_bk = CiphertextVector()
+    for k in range(0, d):
+        vk_matrix = generate_vk_matrix(d, k, alpha).astype(np.int64)
+        wk_matrix = generate_wk_matrix(d, k, 1).astype(np.int64)
+        if vk_matrix.sum() == 0 or wk_matrix.sum() == 0:
+            continue
+        ct_ak.append(lin_trans_enc(vk_matrix, ct_a, evaluator,
+                                   encoder, gal_keys, relin_keys, scale))
+        ct_bk.append(lin_trans_enc(wk_matrix, ct_b, evaluator,
+                                   encoder, gal_keys, relin_keys, scale))
+
+    ct_ab = Ciphertext()
+    evaluator.multiply(ct_ak[0], ct_bk[0], ct_ab)
+    for k in range(1, len(ct_ak)):
+        ct_abk = Ciphertext()
+        evaluator.multiply(ct_ak[k], ct_bk[k], ct_abk)
+        evaluator.add_inplace(ct_ab, ct_abk)
+
+    if relin_keys is not None:
+        evaluator.relinearize_inplace(ct_ab, relin_keys)
 
     return ct_ab
