@@ -42,120 +42,123 @@ T_agd = 6
 # Matrix params
 ds = [2, 4, 8]
 ks = np.arange(1.5, 10.5, 0.5)
+N = 2
+x0_norm = (2. ** 0.5) / 2
 
-gd_err = pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)
-agd_err = pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)
+gd_dist_from_opt = [pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)] * N
+agd_dist_from_opt = [pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)] * N
 
-for d in ds:
-    # Variables to store data for analysis later on
-    x_cols = ["x[" + str(i) + "]" for i in range(d)]
-    step_gd = dict(
-        zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
-    step_he_gd = dict(
-        zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
-    f_step_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
-    f_step_he_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
-    step_agd = dict(
-        zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
-    step_he_agd = dict(
-        zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
-    f_step_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
-    f_step_he_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
-    x_opt = pd.DataFrame(np.zeros((len(ks), d)))
-    f_opt = pd.DataFrame(np.zeros(len(ks)))
+for sample in range(N):
+    for d in ds:
+        # Variables to store data for analysis later on
+        x_cols = ["x[" + str(i) + "]" for i in range(d)]
+        step_gd = dict(
+            zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
+        step_he_gd = dict(
+            zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
+        f_step_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
+        f_step_he_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
+        step_agd = dict(
+            zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
+        step_he_agd = dict(
+            zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
+        f_step_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
+        f_step_he_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
+        x_opt = pd.DataFrame(np.zeros((len(ks), d)))
+        f_opt = pd.DataFrame(np.zeros(len(ks)))
 
-    for i, k in enumerate(ks):
-        Q, p = get_random_Q_p(k, d, False)
-        x_opt_i = -np.linalg.inv(Q).dot(p)
-        x0 = x_opt_i + 0.5
-        x_opt.iloc[i] = x_opt_i.T[0]
-        f_opt.iloc[i] = f(x_opt_i)[0][0]
+        for i, k in enumerate(ks):
+            Q, p = get_random_Q_p(k, d, False)
+            x_opt_i = -np.linalg.inv(Q).dot(p)
+            x0 = x_opt_i + x0_norm / d ** 0.5
+            x_opt.iloc[i] = x_opt_i.T[0]
+            f_opt.iloc[i] = f(x_opt_i)[0][0]
 
-        eigenvals = np.linalg.eigvals(Q)
-        beta = np.max(eigenvals)
-        alpha = np.min(eigenvals)
-        kappa = beta / alpha
-        gamma = (kappa ** 0.5 - 1) / (kappa ** 0.5 + 1)
-        print("kappa: {}".format(kappa))
+            eigenvals = np.linalg.eigvals(Q)
+            beta = np.max(eigenvals)
+            alpha = np.min(eigenvals)
+            kappa = beta / alpha
+            gamma = (kappa ** 0.5 - 1) / (kappa ** 0.5 + 1)
+            print("kappa: {}".format(kappa))
 
-        # solution
-        print("optimal argument: {}".format(x_opt_i))
-        print("optimal value: {}".format(f(x_opt_i)))
+            # solution
+            print("optimal argument: {}".format(x_opt_i))
+            print("optimal value: {}".format(f(x_opt_i)))
 
-        # HE parameters
-        scale = 2.0 ** 40
+            # HE parameters
+            scale = 2.0 ** 40
 
-        parms = EncryptionParameters(scheme_type.ckks)
+            parms = EncryptionParameters(scheme_type.ckks)
 
-        poly_modulus_degree = 32768
-        parms.set_poly_modulus_degree(poly_modulus_degree)
-        parms.set_coeff_modulus(CoeffModulus.Create(poly_modulus_degree, IntVector([60] + [40] * 18 + [60])))
+            poly_modulus_degree = 32768
+            parms.set_poly_modulus_degree(poly_modulus_degree)
+            parms.set_coeff_modulus(CoeffModulus.Create(poly_modulus_degree, IntVector([60] + [40] * 18 + [60])))
 
-        context = SEALContext(parms)
-        print_parameters(context)
+            context = SEALContext(parms)
+            print_parameters(context)
 
-        keygen = KeyGenerator(context)
-        secret_key = keygen.secret_key()
+            keygen = KeyGenerator(context)
+            secret_key = keygen.secret_key()
 
-        public_key = PublicKey()
-        keygen.create_public_key(public_key)
+            public_key = PublicKey()
+            keygen.create_public_key(public_key)
 
-        relin_keys = RelinKeys()
-        keygen.create_relin_keys(relin_keys)
+            relin_keys = RelinKeys()
+            keygen.create_relin_keys(relin_keys)
 
-        gal_keys = GaloisKeys()
-        keygen.create_galois_keys(gal_keys)
+            gal_keys = GaloisKeys()
+            keygen.create_galois_keys(gal_keys)
 
-        encryptor = Encryptor(context, public_key)
-        evaluator = Evaluator(context)
-        decryptor = Decryptor(context, secret_key)
-        ckks_encoder = CKKSEncoder(context)
+            encryptor = Encryptor(context, public_key)
+            evaluator = Evaluator(context)
+            decryptor = Decryptor(context, secret_key)
+            ckks_encoder = CKKSEncoder(context)
 
-        # Problem Inputs HE GD
-        Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
-        p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
-        x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-        x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
-        step_gd[0].iloc[[i]] = x0[:, 0]
-        step_he_gd[0].iloc[[i]] = x0_dec[:, 0]
-        f_step_he_gd[0][i] = f(x0_dec[:, 0])
-        f_step_gd[0][i] = f(x0[:, 0])
-        xs_gd = gd_qp(Q, p, T_gd, x0)
-        xs_gd_enc = he_gd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_gd, x0_enc, evaluator,
-                                  ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-        xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_gd_enc]
-        for t in range(len(xs_gd_dec)):
-            x_gd = xs_gd[t]
-            x_gd_dec = xs_gd_dec[t]
-            step_gd[t].iloc[[i]] = x_gd[:, 0]
-            step_he_gd[t].iloc[[i]] = x_gd_dec[:, 0]
-            f_step_he_gd[t][i] = f(x_gd_dec[:, 0])
-            f_step_gd[t][i] = f(x_gd[:, 0])
+            # Problem Inputs HE GD
+            Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
+            p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
+            x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
+            x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
+            step_gd[0].iloc[[i]] = x0[:, 0]
+            step_he_gd[0].iloc[[i]] = x0_dec[:, 0]
+            f_step_he_gd[0][i] = f(x0_dec[:, 0])
+            f_step_gd[0][i] = f(x0[:, 0])
+            xs_gd = gd_qp(Q, p, T_gd, x0)
+            xs_gd_enc = he_gd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_gd, x0_enc, evaluator,
+                                      ckks_encoder, gal_keys, relin_keys, encryptor, scale)
+            xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_gd_enc]
+            for t in range(len(xs_gd_dec)):
+                x_gd = xs_gd[t]
+                x_gd_dec = xs_gd_dec[t]
+                step_gd[t].iloc[[i]] = x_gd[:, 0]
+                step_he_gd[t].iloc[[i]] = x_gd_dec[:, 0]
+                f_step_he_gd[t][i] = f(x_gd_dec[:, 0])
+                f_step_gd[t][i] = f(x_gd[:, 0])
 
-        # Problem Inputs HE GD
-        Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
-        p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
-        x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-        y0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
-        x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
-        step_agd[0].iloc[[i]] = x0[:, 0]
-        step_he_agd[0].iloc[[i]] = x0_dec[:, 0]
-        f_step_he_agd[0][i] = f(x0_dec[:, 0])
-        f_step_agd[0][i] = f(x0[:, 0])
-        xs_agd = agd_qp(Q, p, T_agd, x0)
-        xs_agd_enc = he_agd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_agd, x0_enc, y0_enc, evaluator,
-                                    ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-        xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_agd_enc]
-        for t in range(len(xs_agd_dec)):
-            x_agd = xs_agd[t]
-            x_agd_dec = xs_agd_dec[t]
-            step_agd[t].iloc[[i]] = x_agd[:, 0]
-            step_he_agd[t].iloc[[i]] = x_agd_dec[:, 0]
-            f_step_he_agd[t][i] = f(x_agd_dec[:, 0])
-            f_step_agd[t][i] = f(x_agd[:, 0])
+            # Problem Inputs HE GD
+            Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
+            p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
+            x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
+            y0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
+            x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
+            step_agd[0].iloc[[i]] = x0[:, 0]
+            step_he_agd[0].iloc[[i]] = x0_dec[:, 0]
+            f_step_he_agd[0][i] = f(x0_dec[:, 0])
+            f_step_agd[0][i] = f(x0[:, 0])
+            xs_agd = agd_qp(Q, p, T_agd, x0)
+            xs_agd_enc = he_agd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_agd, x0_enc, y0_enc, evaluator,
+                                        ckks_encoder, gal_keys, relin_keys, encryptor, scale)
+            xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_agd_enc]
+            for t in range(len(xs_agd_dec)):
+                x_agd = xs_agd[t]
+                x_agd_dec = xs_agd_dec[t]
+                step_agd[t].iloc[[i]] = x_agd[:, 0]
+                step_he_agd[t].iloc[[i]] = x_agd_dec[:, 0]
+                f_step_he_agd[t][i] = f(x_agd_dec[:, 0])
+                f_step_agd[t][i] = f(x_agd[:, 0])
 
-    gd_err[d] = (f_step_gd[[T_gd]] - f_opt.values).values
-    agd_err[d] = (f_step_agd[[T_agd]] - f_opt.values).values
+        gd_dist_from_opt[sample][d] = (f_step_gd[[T_gd]] - f_opt.values).values
+        agd_dist_from_opt[sample][d] = (f_step_agd[[T_agd]] - f_opt.values).values
 
 bar(range(6), [(step_gd[i] - step_he_gd[i]).mean()[0] for i in range(6)])
 
