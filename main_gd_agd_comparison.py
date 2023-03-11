@@ -9,16 +9,15 @@ from scipy.stats import ortho_group
 import pandas as pd
 import matplotlib.pyplot as plt
 from agd.matrix.utils import decrypt_array, encrypt_array, squarify
-from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
+import time
 
 # Problem Inputs plain GD
 # fixing seed
-np.random.seed(1717171)
-
+np.random.seed(171)
 
 def get_random_Q_p(k, size, integer):
     S = ortho_group.rvs(size)
-    R = np.random.randint(1, 100, d) if integer else np.random.rand(d)
+    R = np.random.randint(1, 100, size) if integer else np.random.rand(size)
     Rmin = np.min(R)
     Rmax = np.max(R)
     L = ((R - Rmin) / (Rmax - Rmin) * (k - 1) + 1) * Rmin
@@ -26,53 +25,59 @@ def get_random_Q_p(k, size, integer):
     p = np.random.rand(size, 1)
     return Q, p
 
+def get_random_Q_p_test(k, size):
+    A = np.random.randn(size, size)
+    B = A.T.dot(A)
+    n_zeros = np.random.randint(0, size*(size-1)/2+1)
+    for _ in range(n_zeros):
+        i = np.random.randint(1, size)
+        j = np.random.randint(0, size-1)
+        B[i, j] = 0.0 
+    R, S = np.linalg.eig(B)
+    Rmin = np.min(R)
+    Rmax = np.max(R)
+    L = ((R - Rmin) / (Rmax - Rmin) * (k - 1) + 1) * Rmin
+    Q = S.dot(np.diag(L)).dot(S.T)
+    p = np.random.rand(size, 1)
+    return Q, p
 
 def f(x):
     return 0.5 * x.T.dot(Q).dot(x) + p.T.dot(x)
 
-
 def df(x):
     return Q.dot(x) + p
 
+def norm2(x): 
+    return np.sum(x**2)**0.5
 
 # Steps
 T_gd = 9
 T_agd = 6
 
 # Matrix params
-ds = [2, 4, 8]
-ks = np.arange(1.5, 10.5, 0.5)
-N = 2
-x0_norm = (2. ** 0.5) / 2
+ds = [2,4,8]
+ks = [1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0]
+N = 10
+r = 1 
 
-gd_dist_from_opt = [pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)] * N
-agd_dist_from_opt = [pd.DataFrame(np.zeros((len(ks), len(ds))), columns=ds, index=ks)] * N
+gd_last_step = []
+agd_last_step = [] 
+opt = [] 
 
 for sample in range(N):
-    for d in ds:
+    t0 = time.time()
+    gd_last_step_i = np.zeros((len(ks), len(ds)))
+    agd_last_step_i = np.zeros((len(ks), len(ds)))
+    opt_i = np.zeros((len(ks), len(ds)))
+    for j, d in enumerate(ds):
         # Variables to store data for analysis later on
-        x_cols = ["x[" + str(i) + "]" for i in range(d)]
-        step_gd = dict(
-            zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
-        step_he_gd = dict(
-            zip(range(T_gd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_gd + 1)]))
-        f_step_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
-        f_step_he_gd = pd.DataFrame(np.zeros((len(ks), T_gd + 1)))
-        step_agd = dict(
-            zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
-        step_he_agd = dict(
-            zip(range(T_agd + 1), [pd.DataFrame(np.zeros((len(ks), d)), columns=x_cols) for i in range(T_agd + 1)]))
-        f_step_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
-        f_step_he_agd = pd.DataFrame(np.zeros((len(ks), T_agd + 1)))
-        x_opt = pd.DataFrame(np.zeros((len(ks), d)))
-        f_opt = pd.DataFrame(np.zeros(len(ks)))
-
         for i, k in enumerate(ks):
             Q, p = get_random_Q_p(k, d, False)
-            x_opt_i = -np.linalg.inv(Q).dot(p)
-            x0 = x_opt_i + x0_norm / d ** 0.5
-            x_opt.iloc[i] = x_opt_i.T[0]
-            f_opt.iloc[i] = f(x_opt_i)[0][0]
+            x_opt = -np.linalg.inv(Q).dot(p)
+            r_i = np.random.randn(d)
+            x0 = x_opt + r_i * r / norm2(r_i) 
+            f_opt = f(x_opt)[0][0]
+            opt_i[i][j] = f_opt
 
             eigenvals = np.linalg.eigvals(Q)
             beta = np.max(eigenvals)
@@ -82,8 +87,8 @@ for sample in range(N):
             print("kappa: {}".format(kappa))
 
             # solution
-            print("optimal argument: {}".format(x_opt_i))
-            print("optimal value: {}".format(f(x_opt_i)))
+            print("optimal argument: {}".format(x_opt))
+            print("optimal value: {}".format(f(x_opt)))
 
             # HE parameters
             scale = 2.0 ** 40
@@ -119,21 +124,12 @@ for sample in range(N):
             p_enc = encrypt_array(squarify(p, 0.0, d), encryptor, ckks_encoder, scale)
             x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
             x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
-            step_gd[0].iloc[[i]] = x0[:, 0]
-            step_he_gd[0].iloc[[i]] = x0_dec[:, 0]
-            f_step_he_gd[0][i] = f(x0_dec[:, 0])
-            f_step_gd[0][i] = f(x0[:, 0])
             xs_gd = gd_qp(Q, p, T_gd, x0)
             xs_gd_enc = he_gd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_gd, x0_enc, evaluator,
                                       ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-            xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_gd_enc]
-            for t in range(len(xs_gd_dec)):
-                x_gd = xs_gd[t]
-                x_gd_dec = xs_gd_dec[t]
-                step_gd[t].iloc[[i]] = x_gd[:, 0]
-                step_he_gd[t].iloc[[i]] = x_gd_dec[:, 0]
-                f_step_he_gd[t][i] = f(x_gd_dec[:, 0])
-                f_step_gd[t][i] = f(x_gd[:, 0])
+            xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0] for val in xs_gd_enc]
+            x_gd_dec_last = xs_gd_dec[len(xs_gd_dec)-1]
+            gd_last_step_i[i][j] = f(x_gd_dec_last)[0]
 
             # Problem Inputs HE GD
             Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
@@ -141,59 +137,21 @@ for sample in range(N):
             x0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
             y0_enc = encrypt_array(squarify(x0, 0.0, d), encryptor, ckks_encoder, scale)
             x0_dec = decrypt_array(x0_enc, decryptor, ckks_encoder, d, d)
-            step_agd[0].iloc[[i]] = x0[:, 0]
-            step_he_agd[0].iloc[[i]] = x0_dec[:, 0]
-            f_step_he_agd[0][i] = f(x0_dec[:, 0])
-            f_step_agd[0][i] = f(x0[:, 0])
             xs_agd = agd_qp(Q, p, T_agd, x0)
             xs_agd_enc = he_agd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_agd, x0_enc, y0_enc, evaluator,
                                         ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-            xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d) for val in xs_agd_enc]
-            for t in range(len(xs_agd_dec)):
-                x_agd = xs_agd[t]
-                x_agd_dec = xs_agd_dec[t]
-                step_agd[t].iloc[[i]] = x_agd[:, 0]
-                step_he_agd[t].iloc[[i]] = x_agd_dec[:, 0]
-                f_step_he_agd[t][i] = f(x_agd_dec[:, 0])
-                f_step_agd[t][i] = f(x_agd[:, 0])
-
-        gd_dist_from_opt[sample][d] = (f_step_gd[[T_gd]] - f_opt.values).values
-        agd_dist_from_opt[sample][d] = (f_step_agd[[T_agd]] - f_opt.values).values
-
-bar(range(6), [(step_gd[i] - step_he_gd[i]).mean()[0] for i in range(6)])
-
-ax = (f_step_he_gd - f(x_opt_i)[0][0]).boxplot()
-ax.set_yscale('log')
-plt.show()
-
-ax = (step_he_gd[0]).plot(kind='scatter', x=0, y=1, c='b', marker='.')
-(step_he_gd[1]).plot(kind='scatter', x=0, y=1, ax=ax, c='r', marker='.')
-(step_he_gd[2]).plot(kind='scatter', x=0, y=1, ax=ax, c='y', marker='.')
-(step_he_gd[3]).plot(kind='scatter', x=0, y=1, ax=ax, c='g', marker='.')
-(step_he_gd[4]).plot(kind='scatter', x=0, y=1, ax=ax, c='c', marker='.')
-(step_he_gd[5]).plot(kind='scatter', x=0, y=1, ax=ax, c='r', marker='.')
-(step_he_gd[6]).plot(kind='scatter', x=0, y=1, ax=ax, c='y', marker='.')
-(step_he_gd[7]).plot(kind='scatter', x=0, y=1, ax=ax, c='g', marker='.')
-(step_he_gd[8]).plot(kind='scatter', x=0, y=1, ax=ax, c='c', marker='.')
-avg = np.array([(x.mean().values) for x in step_he_gd.values()])
-plot(avg[:, 0], avg[:, 1], ':')
-
-axins1 = zoomed_inset_axes(ax, zoom=20000000, loc='right')
-(step_he_gd[0]).plot(kind='scatter', x=0, y=1, c='b', ax=axins1, marker='.')
-# fix the number of ticks on the inset axes
-axins1.set_xlim(step_he_gd[0]['x[0]'].min(), step_he_gd[0]['x[0]'].max())
-axins1.set_ylim(step_he_gd[0]['x[1]'].min(), step_he_gd[0]['x[1]'].max())
-axins1.yaxis.get_major_locator().set_params(nbins=1)
-axins1.xaxis.get_major_locator().set_params(nbins=1)
-axins1.tick_params(labelleft=False, labelbottom=False)
-mark_inset(ax, axins1, loc1=1, loc2=2, fc="none", ec="0.5")
-
-axins8 = zoomed_inset_axes(ax, zoom=20000, loc='lower right')
-(step_he_gd[8]).plot(kind='scatter', x=0, y=1, c='m', ax=axins8, marker='.')
-# fix the number of ticks on the inset axes
-axins8.set_xlim(step_he_gd[8]['x[0]'].min(), step_he_gd[8]['x[0]'].max())
-axins8.set_ylim(step_he_gd[8]['x[1]'].min(), step_he_gd[8]['x[1]'].max())
-axins8.yaxis.get_major_locator().set_params(nbins=1)
-axins8.xaxis.get_major_locator().set_params(nbins=1)
-axins8.tick_params(labelleft=False, labelbottom=False)
-mark_inset(ax, axins8, loc1=2, loc2=3, fc="none", ec="0.5")
+            xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0] for val in xs_agd_enc]
+            x_agd_dec_last = xs_agd_dec[len(xs_agd_dec)-1]
+            agd_last_step_i[i][j] = f(x_agd_dec_last)[0]
+    df_gd_last_step_i = pd.DataFrame(gd_last_step_i, columns=ds, index=ks)
+    df_gd_last_step_i.to_csv("./data/comparison/gd"+str(sample)+".csv")
+    gd_last_step += [df_gd_last_step_i]
+    df_agd_last_step_i = pd.DataFrame(agd_last_step_i, columns=ds, index=ks) 
+    df_agd_last_step_i.to_csv("./data/comparison/agd"+str(sample)+".csv")
+    agd_last_step += [df_agd_last_step_i]
+    df_opt_i = pd.DataFrame(opt_i, columns=ds, index=ks) 
+    df_opt_i.to_csv("./data/comparison/opt"+str(sample)+".csv")
+    opt += [df_opt_i]
+    print("=======================================")
+    print(time.time() - t0)
+    print("=======================================")
