@@ -13,7 +13,7 @@ import time
 
 # Problem Inputs plain GD
 # fixing seed
-np.random.seed(171)
+np.random.seed(1717171)
 
 def get_random_Q_p(k, size, integer):
     S = ortho_group.rvs(size)
@@ -57,8 +57,8 @@ T_agd = 6
 # Matrix params
 ds = [2,4,8]
 ks = [1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0]
-N = 10
-r = 1 
+N = 1
+r = 0.5
 
 gd_last_step = []
 agd_last_step = [] 
@@ -74,8 +74,8 @@ for sample in range(N):
         for i, k in enumerate(ks):
             Q, p = get_random_Q_p(k, d, False)
             x_opt = -np.linalg.inv(Q).dot(p)
-            r_i = np.random.randn(d)
-            x0 = x_opt + r_i * r / norm2(r_i) 
+            r_i = np.random.randn(d,1)
+            x0 = x_opt + r_i * r / norm2(r_i)
             f_opt = f(x_opt)[0][0]
             opt_i[i][j] = f_opt
 
@@ -127,9 +127,9 @@ for sample in range(N):
             xs_gd = gd_qp(Q, p, T_gd, x0)
             xs_gd_enc = he_gd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_gd, x0_enc, evaluator,
                                       ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-            xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0] for val in xs_gd_enc]
+            xs_gd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0].reshape(d,1) for val in xs_gd_enc]
             x_gd_dec_last = xs_gd_dec[len(xs_gd_dec)-1]
-            gd_last_step_i[i][j] = f(x_gd_dec_last)[0]
+            gd_last_step_i[i][j] = f(x_gd_dec_last)[0][0]
 
             # Problem Inputs HE GD
             Q_enc = encrypt_array(Q, encryptor, ckks_encoder, scale)
@@ -140,9 +140,9 @@ for sample in range(N):
             xs_agd = agd_qp(Q, p, T_agd, x0)
             xs_agd_enc = he_agd_qp_ckks(Q_enc, p_enc, d, alpha, beta, T_agd, x0_enc, y0_enc, evaluator,
                                         ckks_encoder, gal_keys, relin_keys, encryptor, scale)
-            xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0] for val in xs_agd_enc]
+            xs_agd_dec = [decrypt_array(val, decryptor, ckks_encoder, d, d)[:,0].reshape(d,1) for val in xs_agd_enc]
             x_agd_dec_last = xs_agd_dec[len(xs_agd_dec)-1]
-            agd_last_step_i[i][j] = f(x_agd_dec_last)[0]
+            agd_last_step_i[i][j] = f(x_agd_dec_last)[0][0]
     df_gd_last_step_i = pd.DataFrame(gd_last_step_i, columns=ds, index=ks)
     df_gd_last_step_i.to_csv("./data/comparison/gd"+str(sample)+".csv")
     gd_last_step += [df_gd_last_step_i]
@@ -155,3 +155,11 @@ for sample in range(N):
     print("=======================================")
     print(time.time() - t0)
     print("=======================================")
+
+gd_last_step = []
+agd_last_step = []
+opt = []
+for i in range(N):
+    gd_last_step += [pd.read_csv("./data/comparison/gd" + str(i) + ".csv", index_col=0)]
+    agd_last_step += [pd.read_csv("./data/comparison/agd" + str(i) + ".csv", index_col=0)]
+    opt += [pd.read_csv("./data/comparison/opt" + str(i) + ".csv", index_col=0)]

@@ -235,7 +235,7 @@ def rescale_and_mod_switch_y_and_multiply_x(x: Ciphertext, y: float, evaluator: 
                                             relin_keys: RelinKeys, scale: float = None):
     y_ = Plaintext()
     _scale = scale if scale is not None else x.scale()
-    encode(y, encoder, y_, _scale)
+    encoder.encode(y, _scale, y_)
     evaluator.mod_switch_to_inplace(y_, x.parms_id())
     z = Ciphertext()
     evaluator.multiply_plain(x, y_, z)

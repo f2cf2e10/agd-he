@@ -48,7 +48,9 @@ def he_agd_qp_ckks(Q_enc: Ciphertext, p_enc: Ciphertext, d: int, alpha: float, b
     steps = [None] * (T + 1)
     steps[0] = x_enc_
     for t in range(1, T + 1):
-        Q_dot_x_enc = ours(Q_enc, x_enc_, evaluator, encoder, gal_keys, relin_keys, d, -1. / beta, scale)
+        Q_dot_x_enc = ours(Q_enc, x_enc_, evaluator,
+                           encoder, gal_keys, relin_keys,
+                           d, -1. / beta, scale)
 
         p_enc_beta.set_scale(Q_dot_x_enc.scale())
         evaluator.mod_switch_to_inplace(
